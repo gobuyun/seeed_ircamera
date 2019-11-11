@@ -26,7 +26,7 @@ setup(
     long_description_content_type='text/markdown',
 
     # The project's main homepage.
-    url='https://github.com/Seeed-Studio',
+    url='https://github.com/gobuyun/seeed_ircamera',
 
     # Author details
     author='gobuyun',
