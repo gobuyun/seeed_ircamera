@@ -35,10 +35,7 @@ def constrain(value, down, up):
 
 def isDigital(value):
     try:
-        if value == "nan":
-            return False
-        else:
-            float(value)
+        float(value)
         return True
     except ValueError:
         return False
@@ -72,65 +69,19 @@ class SerialDataReader(QThread):
             maxHet = 0
             minHet = 500
             tempData = []
-            nanCount = 0
-
-            if  len(hetData) < 768 :
-                continue
-
             for i in range(0, 768):
                 curCol = i % 32
-                newValueForNanPoint = 0
-            
-
+                if curCol == 31:
+                    tempData.append(0)
+                    continue
                 if i < len(hetData) and isDigital(hetData[i]):
                     tempData.append(float(hetData[i]))
                     maxHet = tempData[i] if tempData[i] > maxHet else maxHet
                     minHet = tempData[i] if tempData[i] < minHet else minHet
                 else:
-                    interpolationPointCount = 0
-                    sumValue = 0
-                    # print("curCol",curCol,"i",i)
-
-                    abovePointIndex = i-32
-                    if (abovePointIndex>0):
-                        if hetData[abovePointIndex] is not "nan" :
-                            interpolationPointCount += 1
-                            sumValue += float(hetData[abovePointIndex])
-
-                    belowPointIndex = i+32
-                    if (belowPointIndex<768):
-                        print(" ")
-                        if hetData[belowPointIndex] is not "nan" :
-                            interpolationPointCount += 1
-                            sumValue += float(hetData[belowPointIndex])
-                            
-                    leftPointIndex = i -1
-                    if (curCol != 31):
-                        if hetData[leftPointIndex]  is not "nan" :
-                            interpolationPointCount += 1
-                            sumValue += float(hetData[leftPointIndex])
-
-                    rightPointIndex = i + 1
-                    if (belowPointIndex<768):
-                        if (curCol != 0):
-                            if hetData[rightPointIndex] is not "nan" :
-                                interpolationPointCount += 1
-                                sumValue += float(hetData[rightPointIndex])
-
-                    newValueForNanPoint =  sumValue /interpolationPointCount
-                   
-                    # For debug :
-                    # print(abovePointIndex,belowPointIndex,leftPointIndex,rightPointIndex)
-                    # print("newValueForNanPoint",newValueForNanPoint," interpolationPointCount" , interpolationPointCount ,"sumValue",sumValue)
-                    
-                    tempData.append(newValueForNanPoint)
-                    nanCount +=1
+                    tempData.append(0)
             if maxHet == 0:
                 continue
-            # For debug :
-            # if nanCount > 0 :
-            #     print("____@@@@@@@ nanCount " ,nanCount , " @@@@@@@____")
-           
             # map value to 180-360
             for i in range(len(tempData)):
                 tempData[i] = constrain(mapValue(tempData[i], minHet, maxHet, minHue, maxHue), minHue, maxHue)
@@ -159,7 +110,7 @@ class painter(QGraphicsView):
     frameCount = 0
     baseZValue = 0
     textLineHeight = fontSize + 10
-    blurRaduis = 50  # Smoother improvement
+    blurRaduis = 15
     def __init__(self):
         super(painter, self).__init__()
         self.setFixedSize(self.width, self.height + self.textLineHeight)
