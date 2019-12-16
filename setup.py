@@ -19,24 +19,25 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
-    name='seed_ircamera',
-    version='0.1.0',
+    name='seeed_python_ircamera',
+    version='1.6.0',
     description='32 x 24 pixels IRCamera Application',
     long_description=long_description,
     long_description_content_type='text/markdown',
 
     # The project's main homepage.
     url='https://github.com/gobuyun/seeed_ircamera',
-
+    entry_points = {
+    'console_scripts': [
+        'ircamera = seeed_python_ircamera:run'
+    ]},
     # Author details
     author='gobuyun',
     author_email='874751353@qq.com',
 
     install_requires=[
         'PyQt5',
-        'opencv-python',
-        'numpy',
-        'serial'
+        'pyserial'
     ],
 
     # Choose your license
@@ -61,5 +62,5 @@ setup(
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
-    # py_modules=[],
+    py_modules=['seeed_python_ircamera'],
 )
