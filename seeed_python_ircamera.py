@@ -319,4 +319,4 @@ def run():
     window.show()
     app.exec_()
 
-run()
+# run()
