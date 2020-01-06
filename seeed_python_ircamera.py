@@ -1,5 +1,6 @@
 import sys
 import threading
+import seeed_mlx90640
 from serial import Serial
 from PyQt5.QtWidgets import (
         QApplication,
@@ -45,34 +46,53 @@ def isDigital(value):
 
 
 hetaData = []
-maxHet = 0
-minHet = 0
 lock = threading.Lock()
-minHue = 90
+minHue = 180
 maxHue = 360
 
 
-class SerialDataReader(QThread):
+class DataReader(QThread):
     drawRequire = pyqtSignal()
+
+    I2C = 0,
+    SERIAL = 1
+    MODE = I2C
+
     def __init__(self, port):
-        super(SerialDataReader, self).__init__()
-        self.port = port
-        self.com = Serial(self.port, 2000000, timeout=5)
+        super(DataReader, self).__init__()
         self.frameCount = 0
+        # i2c mode
+        if port is None:
+            self.dataHandle = seeed_mlx90640.grove_mxl90640()
+            self.dataHandle.refresh_rate = seeed_mlx90640.RefreshRate.REFRESH_64_HZ
+            self.readData = self.i2cRead
+        else:
+            self.MODE = DataReader.SERIAL
+            self.port = port
+            self.dataHandle = Serial(self.port, 2000000, timeout=5)
+            self.readData = self.serialRead
+
+    def i2cRead(self):
+        hetData = [0]*768
+        self.dataHandle.mlx.getFrame(hetData)
+        return hetData
+
+    def serialRead(self):
+        hetData = self.dataHandle.read_until(terminator=b'\r\n')
+        hetData = str(hetData, encoding="utf8").split(",")
+        hetData = hetData[:-1]
+        return hetData
 
     def run(self):
-        global maxHet
-        global minHet
         # throw first frame
-        self.com.read_until(terminator=b'\r\n')
+        self.readData()
         while True:
-            hetData = self.com.read_until(terminator=b'\r\n')
-            hetData = str(hetData, encoding="utf8").split(",")
-            hetData = hetData[:-1]
             maxHet = 0
             minHet = 500
             tempData = []
             nanCount = 0
+
+            hetData = self.readData()
 
             if  len(hetData) < 768 :
                 continue
@@ -80,12 +100,10 @@ class SerialDataReader(QThread):
             for i in range(0, 768):
                 curCol = i % 32
                 newValueForNanPoint = 0
-            
+                curData = None
 
                 if i < len(hetData) and isDigital(hetData[i]):
-                    tempData.append(float(hetData[i]))
-                    maxHet = tempData[i] if tempData[i] > maxHet else maxHet
-                    minHet = tempData[i] if tempData[i] < minHet else minHet
+                    curData = float(hetData[i])
                 else:
                     interpolationPointCount = 0
                     sumValue = 0
@@ -117,25 +135,30 @@ class SerialDataReader(QThread):
                                 interpolationPointCount += 1
                                 sumValue += float(hetData[rightPointIndex])
 
-                    newValueForNanPoint =  sumValue /interpolationPointCount
-                   
+                    curData =  sumValue /interpolationPointCount
                     # For debug :
                     # print(abovePointIndex,belowPointIndex,leftPointIndex,rightPointIndex)
                     # print("newValueForNanPoint",newValueForNanPoint," interpolationPointCount" , interpolationPointCount ,"sumValue",sumValue)
-                    
-                    tempData.append(newValueForNanPoint)
                     nanCount +=1
-            if maxHet == 0:
+
+                tempData.append(curData)
+                maxHet = tempData[i] if tempData[i] > maxHet else maxHet
+                minHet = tempData[i] if tempData[i] < minHet else minHet
+
+            if maxHet == 0 or minHet == 500:
                 continue
             # For debug :
             # if nanCount > 0 :
             #     print("____@@@@@@@ nanCount " ,nanCount , " @@@@@@@____")
            
-            # map value to 180-360
-            for i in range(len(tempData)):
-                tempData[i] = constrain(mapValue(tempData[i], minHet, maxHet, minHue, maxHue), minHue, maxHue)
             lock.acquire()
-            hetaData.append(tempData)
+            hetaData.append(
+                {
+                    "frame": tempData,
+                    "maxHet": maxHet,
+                    "minHet": minHet
+                }
+            )
             lock.release()
             self.drawRequire.emit()
             self.frameCount = self.frameCount + 1
@@ -226,6 +249,9 @@ class painter(QGraphicsView):
         lock.acquire()
         frame = hetaData.pop(0)
         lock.release()
+        maxHet = frame["maxHet"]
+        minHet = frame["minHet"]
+        frame = frame["frame"]
         p = QPainter(self.cameraBuffer)
         p.fillRect(
                 0, 0, self.width, 
@@ -236,7 +262,8 @@ class painter(QGraphicsView):
         color = QColor()
         for yIndex in range(int(self.height / self.pixelSize)):
             for xIndex in range(int(self.width / self.pixelSize)):
-                color.setHsvF(frame[index] / 360, 1.0, 1.0)
+                tempData = constrain(mapValue(frame[index], minHet, maxHet, minHue, maxHue), minHue, maxHue)
+                color.setHsvF(tempData / 360, 1.0, 1.0)
                 p.fillRect(
                     xIndex * self.pixelSize,
                     yIndex * self.pixelSize,
@@ -263,7 +290,7 @@ class painter(QGraphicsView):
             p.drawText(i * self.textInterval, self.fontSize + 3, str(bastNum + (i * interval)) + "°")
         self.hetTextItem.setPixmap(self.hetTextBuffer)
         # draw center het text
-        cneter = round(mapValue(frame[self.centerIndex], minHue, maxHue, minHet, maxHet), 1)
+        cneter = round(frame[self.centerIndex], 1)
         centerText = "<font color=white>%s</font>"
         self.centerTextItem.setFont(font)
         self.centerTextItem.setHtml(centerText % (str(cneter) + "°"))
@@ -274,17 +301,22 @@ class painter(QGraphicsView):
 def run():
     global minHue
     global maxHue
-    if len(sys.argv) < 2:
-        print("Usage: %s PortName [minHue] [maxHue] [NarrowRatio] [UseBlur]" % sys.argv[0])
+    if len(sys.argv) >= 2 and sys.argv[1] == "-h":
+        print("Usage: %s [PortName] [minHue] [maxHue] [NarrowRatio] [UseBlur]" % sys.argv[0])
         exit(0)
     if len(sys.argv) >= 4:
         minHue = int(sys.argv[2])
         maxHue = int(sys.argv[3])
+    if len(sys.argv) >= 2:
+        port = sys.argv[1]
+    else:
+        port = None
     app = QApplication(sys.argv)
     window = painter()
-    dataThread = SerialDataReader(sys.argv[1])
+    dataThread = DataReader(port)
     dataThread.drawRequire.connect(window.draw)
     dataThread.start()
     window.show()
     app.exec_()
 
+run()

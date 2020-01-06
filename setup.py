@@ -20,7 +20,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='seeed_python_ircamera',
-    version='1.7.0',
+    version='1.8.0',
     description='32 x 24 pixels IRCamera Application',
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -37,7 +37,8 @@ setup(
 
     install_requires=[
         'PyQt5',
-        'pyserial'
+        'pyserial',
+        'seeed-python-mlx90640'
     ],
 
     # Choose your license
