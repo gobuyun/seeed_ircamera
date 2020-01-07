@@ -74,7 +74,7 @@ class DataReader(QThread):
 
     def i2cRead(self):
         hetData = [0]*768
-        self.dataHandle.mlx.getFrame(hetData)
+        self.dataHandle.getFrame(hetData)
         return hetData
 
     def serialRead(self):
